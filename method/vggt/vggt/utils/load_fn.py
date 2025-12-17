@@ -12,6 +12,8 @@ import numpy as np
 
 def load_and_preprocess_images_square(image_path_list, target_size=1024):
     """
+    保持原始长宽比且需要知道原始像素位置 
+    计算图片的长边，以此为边长创建一个正方形的黑色背景 (0, 0, 0)。将原图粘贴在正方形的中心。
     Load and preprocess images by center padding to square and resizing to target size.
     Also returns the position information of original pixels after transformation.
 
