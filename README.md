@@ -12,7 +12,7 @@ best model : Pi3
 | Method   | Paper  | Notes | Publisher
 |-------|-----|-----|-----|
 |[Dust3r](https://github.com/naver/dust3r) |[DUSt3R arxiv](https://arxiv.org/abs/2312.14132)| todo| CVPR2024
-|[VGGT](https://github.com/facebookresearch/vggt) | [arxiv](https://arxiv.org/abs/2503.11651) | todo| CVPR2025
+|[VGGT](https://github.com/facebookresearch/vggt) | [arxiv](https://arxiv.org/abs/2503.11651) | doing| CVPR2025
 |[pi3](https://github.com/yyfz/Pi3) | [arxiv](https://arxiv.org/abs/2507.13347) |doing |arxiv
 
 
