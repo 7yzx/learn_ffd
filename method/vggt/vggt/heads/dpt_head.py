@@ -213,12 +213,12 @@ class DPTHead(nn.Module):
 
             x = self.norm(x)
 
-            x = x.permute(0, 2, 1).reshape((x.shape[0], x.shape[-1], patch_h, patch_w))
+            x = x.permute(0, 2, 1).reshape((x.shape[0], x.shape[-1], patch_h, patch_w)) # [S, 2048, 37, 37]
 
-            x = self.projects[dpt_idx](x)
+            x = self.projects[dpt_idx](x)# [S, 256, 37, 37] -> [S, 512, 37,37] -> [S, 1024, 37 ,37] ->[S, 1024, 37 ,37]
             if self.pos_embed:
                 x = self._apply_pos_embed(x, W, H)
-            x = self.resize_layers[dpt_idx](x)
+            x = self.resize_layers[dpt_idx](x) # [S, 256, 148, 148] -> [2, 512, 74, 74] -> [S, 1024, 37, 37] -> [S, 1024, 19, 19]
 
             out.append(x)
             dpt_idx += 1
