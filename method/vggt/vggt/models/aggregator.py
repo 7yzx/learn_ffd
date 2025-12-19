@@ -192,7 +192,7 @@ class Aggregator(nn.Module):
                 The list of outputs from the attention blocks,
                 and the patch_start_idx indicating where patch tokens begin.
         """
-        B, S, C_in, H, W = images.shape
+        B, S, C_in, H, W = images.shape # infer always B=1, 
 
         if C_in != 3:
             raise ValueError(f"Expected 3 input channels, got {C_in}")
@@ -202,25 +202,25 @@ class Aggregator(nn.Module):
 
         # Reshape to [B*S, C, H, W] for patch embedding
         images = images.view(B * S, C_in, H, W)
-        patch_tokens = self.patch_embed(images)
+        patch_tokens = self.patch_embed(images) 
 
         if isinstance(patch_tokens, dict):
-            patch_tokens = patch_tokens["x_norm_patchtokens"]
+            patch_tokens = patch_tokens["x_norm_patchtokens"] 
 
-        _, P, C = patch_tokens.shape
+        _, P, C = patch_tokens.shape # [_ 1369 1024]
 
-        # Expand camera and register tokens to match batch size and sequence length
-        camera_token = slice_expand_and_flatten(self.camera_token, B, S)
-        register_token = slice_expand_and_flatten(self.register_token, B, S)
+        # Expand camera and register tokens to match batch size and sequence length 这里不是dino的，而是vggt的 register token
+        camera_token = slice_expand_and_flatten(self.camera_token, B, S) # [ 1 2 1 1024] -> [2 1 1024]
+        register_token = slice_expand_and_flatten(self.register_token, B, S) # [1 2 4 1024] -> [2 4 1024]
 
         # Concatenate special tokens with patch tokens
         tokens = torch.cat([camera_token, register_token, patch_tokens], dim=1)
 
         pos = None
         if self.rope is not None:
-            pos = self.position_getter(B * S, H // self.patch_size, W // self.patch_size, device=images.device)
+            pos = self.position_getter(B * S, H // self.patch_size, W // self.patch_size, device=images.device) #  [S 1369 2] 把patch在grid中的位置给出来，行优先
 
-        if self.patch_start_idx > 0:
+        if self.patch_start_idx > 0: # 5
             # do not use position embedding for special tokens (camera and register tokens)
             # so set pos to 0 for the special tokens
             pos = pos + 1
@@ -228,15 +228,15 @@ class Aggregator(nn.Module):
             pos = torch.cat([pos_special, pos], dim=1)
 
         # update P because we added special tokens
-        _, P, C = tokens.shape
+        _, P, C = tokens.shape # [_ 1374 1024]
 
         frame_idx = 0
         global_idx = 0
         output_list = []
 
-        for _ in range(self.aa_block_num):
+        for _ in range(self.aa_block_num): # 24
             for attn_type in self.aa_order:
-                if attn_type == "frame":
+                if attn_type == "frame": # frame attention
                     tokens, frame_idx, frame_intermediates = self._process_frame_attention(
                         tokens, B, S, P, C, frame_idx, pos=pos
                     )
@@ -255,11 +255,12 @@ class Aggregator(nn.Module):
         del concat_inter
         del frame_intermediates
         del global_intermediates
+        # output_list: length self.aa_block_num, each [B S P 2048]
         return output_list, self.patch_start_idx
 
     def _process_frame_attention(self, tokens, B, S, P, C, frame_idx, pos=None):
         """
-        Process frame attention blocks. We keep tokens in shape (B*S, P, C).
+        Process frame attention blocks. We keep tokens in shape (B*S, P, C). 只在 $P$（Patch数量）个 Token 之间做 Attention。
         """
         # If needed, reshape tokens or positions:
         if tokens.shape != (B * S, P, C):
@@ -276,14 +277,14 @@ class Aggregator(nn.Module):
                 tokens = checkpoint(self.frame_blocks[frame_idx], tokens, pos, use_reentrant=self.use_reentrant)
             else:
                 tokens = self.frame_blocks[frame_idx](tokens, pos=pos)
-            frame_idx += 1
+            frame_idx += 1 
             intermediates.append(tokens.view(B, S, P, C))
 
         return tokens, frame_idx, intermediates
 
     def _process_global_attention(self, tokens, B, S, P, C, global_idx, pos=None):
         """
-        Process global attention blocks. We keep tokens in shape (B, S*P, C).
+        Process global attention blocks. We keep tokens in shape (B, S*P, C).  在 $S \times P$ 个 Token 之间做 Attention（非常昂贵，通常需要 Flash Attention 或 xFormers 支持）。
         """
         if tokens.shape != (B, S * P, C):
             tokens = tokens.view(B, S, P, C).view(B, S * P, C)
