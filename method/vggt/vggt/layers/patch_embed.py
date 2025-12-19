@@ -45,14 +45,14 @@ class PatchEmbed(nn.Module):
     ) -> None:
         super().__init__()
 
-        image_HW = make_2tuple(img_size)
-        patch_HW = make_2tuple(patch_size)
-        patch_grid_size = (image_HW[0] // patch_HW[0], image_HW[1] // patch_HW[1])
+        image_HW = make_2tuple(img_size) # 518
+        patch_HW = make_2tuple(patch_size) # 14
+        patch_grid_size = (image_HW[0] // patch_HW[0], image_HW[1] // patch_HW[1]) # (37, 37)
 
         self.img_size = image_HW
         self.patch_size = patch_HW
         self.patches_resolution = patch_grid_size
-        self.num_patches = patch_grid_size[0] * patch_grid_size[1]
+        self.num_patches = patch_grid_size[0] * patch_grid_size[1] # 1369
 
         self.in_chans = in_chans
         self.embed_dim = embed_dim
@@ -69,11 +69,11 @@ class PatchEmbed(nn.Module):
         assert H % patch_H == 0, f"Input image height {H} is not a multiple of patch height {patch_H}"
         assert W % patch_W == 0, f"Input image width {W} is not a multiple of patch width: {patch_W}"
 
-        x = self.proj(x)  # B C H W
+        x = self.proj(x)  # B C H W --> B embed_dim 37 37
         H, W = x.size(2), x.size(3)
-        x = x.flatten(2).transpose(1, 2)  # B HW C
+        x = x.flatten(2).transpose(1, 2)  # B HW C [B, 1369, 1024]
         x = self.norm(x)
-        if not self.flatten_embedding:
+        if not self.flatten_embedding: # True
             x = x.reshape(-1, H, W, self.embed_dim)  # B H W C
         return x
 
