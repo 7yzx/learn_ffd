@@ -42,12 +42,12 @@ class BlockChunk(nn.ModuleList):
 class DinoVisionTransformer(nn.Module):
     def __init__(
         self,
-        img_size=224,
+        img_size=224, 
         patch_size=16,
         in_chans=3,
         embed_dim=768,
-        depth=12,
-        num_heads=12,
+        depth=12,      
+        num_heads=12,  
         mlp_ratio=4.0,
         qkv_bias=True,
         ffn_bias=True,
@@ -60,7 +60,7 @@ class DinoVisionTransformer(nn.Module):
         block_fn=Block,
         ffn_layer="mlp",
         block_chunks=1,
-        num_register_tokens=0,
+        num_register_tokens=0, # vggt 4
         interpolate_antialias=False,
         interpolate_offset=0.1,
         qk_norm=False,
@@ -93,24 +93,24 @@ class DinoVisionTransformer(nn.Module):
         super().__init__()
         norm_layer = partial(nn.LayerNorm, eps=1e-6)
 
-        self.num_features = self.embed_dim = embed_dim  # num_features for consistency with other models
-        self.num_tokens = 1
-        self.n_blocks = depth
-        self.num_heads = num_heads
-        self.patch_size = patch_size
-        self.num_register_tokens = num_register_tokens
-        self.interpolate_antialias = interpolate_antialias
-        self.interpolate_offset = interpolate_offset
+        self.num_features = self.embed_dim = embed_dim  # num_features for consistency with other models in vggt 1024
+        self.num_tokens = 1 
+        self.n_blocks = depth # vggt 24
+        self.num_heads = num_heads # 16
+        self.patch_size = patch_size # 14
+        self.num_register_tokens = num_register_tokens # vggt 4
+        self.interpolate_antialias = interpolate_antialias # False
+        self.interpolate_offset = interpolate_offset # 0
         self.use_reentrant = False # hardcoded to False
 
         self.patch_embed = embed_layer(img_size=img_size, patch_size=patch_size, in_chans=in_chans, embed_dim=embed_dim)
-        num_patches = self.patch_embed.num_patches
+        num_patches = self.patch_embed.num_patches # 1369
 
         self.cls_token = nn.Parameter(torch.zeros(1, 1, embed_dim))
-        self.pos_embed = nn.Parameter(torch.zeros(1, num_patches + self.num_tokens, embed_dim))
+        self.pos_embed = nn.Parameter(torch.zeros(1, num_patches + self.num_tokens, embed_dim)) # [1, 1370, 1024]
         assert num_register_tokens >= 0
         self.register_tokens = (
-            nn.Parameter(torch.zeros(1, num_register_tokens, embed_dim)) if num_register_tokens else None
+            nn.Parameter(torch.zeros(1, num_register_tokens, embed_dim)) if num_register_tokens else None # 【1, 4, 1024】
         )
 
         if drop_path_uniform is True:
@@ -213,15 +213,15 @@ class DinoVisionTransformer(nn.Module):
 
     def prepare_tokens_with_masks(self, x, masks=None):
         B, nc, w, h = x.shape
-        x = self.patch_embed(x)
+        x = self.patch_embed(x) # [B, 1369, 1024]
         if masks is not None:
             x = torch.where(masks.unsqueeze(-1), self.mask_token.to(x.dtype).unsqueeze(0), x)
 
-        x = torch.cat((self.cls_token.expand(x.shape[0], -1, -1), x), dim=1)
+        x = torch.cat((self.cls_token.expand(x.shape[0], -1, -1), x), dim=1) # [B, 1370, 1024]
         x = x + self.interpolate_pos_encoding(x, w, h)
 
         if self.register_tokens is not None:
-            x = torch.cat((x[:, :1], self.register_tokens.expand(x.shape[0], -1, -1), x[:, 1:]), dim=1)
+            x = torch.cat((x[:, :1], self.register_tokens.expand(x.shape[0], -1, -1), x[:, 1:]), dim=1) # 加在cls和patch之间 [B, 1374, 1024]
 
         return x
 
@@ -250,10 +250,10 @@ class DinoVisionTransformer(nn.Module):
         return output
 
     def forward_features(self, x, masks=None):
-        if isinstance(x, list):
+        if isinstance(x, list): # x is [S, 3,518,518]
             return self.forward_features_list(x, masks)
 
-        x = self.prepare_tokens_with_masks(x, masks)
+        x = self.prepare_tokens_with_masks(x, masks) # mask is None
 
         for blk in self.blocks:
             if self.training:
@@ -261,11 +261,11 @@ class DinoVisionTransformer(nn.Module):
             else:
                 x = blk(x)
 
-        x_norm = self.norm(x)
+        x_norm = self.norm(x) # LayerNorm  [B, 1374, 1024]
         return {
             "x_norm_clstoken": x_norm[:, 0],
             "x_norm_regtokens": x_norm[:, 1 : self.num_register_tokens + 1],
-            "x_norm_patchtokens": x_norm[:, self.num_register_tokens + 1 :],
+            "x_norm_patchtokens": x_norm[:, self.num_register_tokens + 1 :], # [B, 1369, 1024]
             "x_prenorm": x,
             "masks": masks,
         }
