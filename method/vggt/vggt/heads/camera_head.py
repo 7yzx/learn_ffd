@@ -18,8 +18,8 @@ from vggt.heads.head_act import activate_pose
 
 class CameraHead(nn.Module):
     """
+    基于迭代优化的相机参数解码器 利用patch_token预测绝对平移向量(absT)、四元数(quaR)、视场角(Fov)
     CameraHead predicts camera parameters from token representations using iterative refinement.
-
     It applies a series of transformer blocks (the "trunk") to dedicated camera tokens.
     """
 
@@ -83,11 +83,11 @@ class CameraHead(nn.Module):
             list: A list of predicted camera encodings (post-activation) from each iteration.
         """
         # Use tokens from the last block for camera prediction.
-        tokens = aggregated_tokens_list[-1]
+        tokens = aggregated_tokens_list[-1] # [1, S, 1374, 2048]
 
         # Extract the camera tokens
-        pose_tokens = tokens[:, :, 0]
-        pose_tokens = self.token_norm(pose_tokens)
+        pose_tokens = tokens[:, :, 0] # 第一个就是相机的参数 [1, S, 2048]
+        pose_tokens = self.token_norm(pose_tokens) # LayerNorm
 
         pred_pose_enc_list = self.trunk_fn(pose_tokens, num_iterations)
         return pred_pose_enc_list
@@ -109,23 +109,24 @@ class CameraHead(nn.Module):
 
         for _ in range(num_iterations):
             # Use a learned empty pose for the first iteration.
+            # 初始化可学习的empty_pose_tokens -> 经过Linear层映射到高维空间 用于生成调制参数
             if pred_pose_enc is None:
-                module_input = self.embed_pose(self.empty_pose_tokens.expand(B, S, -1))
+                module_input = self.embed_pose(self.empty_pose_tokens.expand(B, S, -1)) # module_input shape [1, S, 2048]
             else:
                 # Detach the previous prediction to avoid backprop through time.
                 pred_pose_enc = pred_pose_enc.detach()
                 module_input = self.embed_pose(pred_pose_enc)
 
             # Generate modulation parameters and split them into shift, scale, and gate components.
-            shift_msa, scale_msa, gate_msa = self.poseLN_modulation(module_input).chunk(3, dim=-1)
+            shift_msa, scale_msa, gate_msa = self.poseLN_modulation(module_input).chunk(3, dim=-1) # [1, S, 2048]
 
-            # Adaptive layer normalization and modulation.
+            # Adaptive layer normalization and modulation. # 返回值：(camera_token *(1+scale) + shift)*gate
             pose_tokens_modulated = gate_msa * modulate(self.adaln_norm(pose_tokens), shift_msa, scale_msa)
-            pose_tokens_modulated = pose_tokens_modulated + pose_tokens
+            pose_tokens_modulated = pose_tokens_modulated + pose_tokens # 添加残差连接
 
-            pose_tokens_modulated = self.trunk(pose_tokens_modulated)
+            pose_tokens_modulated = self.trunk(pose_tokens_modulated)  # [1, S, 2048]
             # Compute the delta update for the pose encoding.
-            pred_pose_enc_delta = self.pose_branch(self.trunk_norm(pose_tokens_modulated))
+            pred_pose_enc_delta = self.pose_branch(self.trunk_norm(pose_tokens_modulated))  # [1, S, 9]
 
             if pred_pose_enc is None:
                 pred_pose_enc = pred_pose_enc_delta
